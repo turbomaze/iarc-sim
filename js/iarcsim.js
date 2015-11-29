@@ -3,7 +3,7 @@
 | @author Anthony  |
 | @version 1.0     |
 | @date 2015/10/24 |
-| @edit 2015/10/29 |
+| @edit 2015/11/29 |
 \******************/
 
 var IARCSim = (function() {
@@ -18,14 +18,14 @@ var IARCSim = (function() {
     var MAX_TIME = 10*60*1000; //in ms
 
     var UAV_SPEC = {
-      R: 0.0255*DIMS[0], //arbitrary size of the uav
-      S: 0.15*DIMS[0]*SPEEDUP //arbitrary speed of the uav
+      R: 0.0255, //arbitrary size of the uav
+      S: 0.15*SPEEDUP //arbitrary speed of the uav
     };
     var ROOMBA_SPEC = {
-      N: 1, //number of roombas
-      R: 0.0085*DIMS[0], //radius of the Roombas
-      S: 0.0165*DIMS[0]*SPEEDUP, //speed in px per second
-      initD: 0.05*500, //how far the roombas are initially
+      N: 10, //number of roombas
+      R: 0.0085, //radius of the Roombas
+      S: 0.0165*SPEEDUP, //speed in px per second
+      initD: 0.05, //how far the roombas are initially
       angSpd: 1.38*SPEEDUP, //angular speed in radians per second
       flipFreq: 20*1000/SPEEDUP, //rotates 180 degrees every 20s
       randAngFreq: 5*1000/SPEEDUP, //rotates randomly every 5s
@@ -36,7 +36,7 @@ var IARCSim = (function() {
       N: 4, //number of obstacle roombas
       R: 1.5*ROOMBA_SPEC.R, //radius of the obstacle roombas
       S: ROOMBA_SPEC.S, //speed of the obstacle roombas
-      initD: 0.25*DIMS[0],
+      initD: 0.25,
       angSpd: 1.38*SPEEDUP //angular speed in radians per second
     };
     var POINTS_SPEC = {
@@ -57,7 +57,7 @@ var IARCSim = (function() {
 
     /*************
      * constants */
-    var CENTER = [DIMS[0]/2, DIMS[1]/2];
+    var CENTER = [0.5, 0.5];
 
     /***********
      * objects */
@@ -346,8 +346,8 @@ var IARCSim = (function() {
     function handleExitBehavior() {
       for (var ai = 0; ai < roombas.length; ai++) {
         //if a roomba leaves any of the edges, remove the roomba
-        if (roombas[ai].position[0] < 0 || roombas[ai].position[0] > DIMS[0] ||
-            roombas[ai].position[1] < 0 || roombas[ai].position[1] > DIMS[1]) {
+        if (roombas[ai].position[0] < 0 || roombas[ai].position[0] > 1 ||
+            roombas[ai].position[1] < 0 || roombas[ai].position[1] > 1) {
           //special goal edge
           if (roombas[ai].position[1] < 0) {
             //make sure you negate the previous miss deduction!
@@ -398,7 +398,7 @@ var IARCSim = (function() {
     function getReward() {
       return roombas.reduce(function(total, roomba) {
         //reward proximity to goal line
-        var contr = Math.pow(DIMS[1] - roomba.position[1], 2)/Math.pow(DIMS[0], 2);
+        var contr = Math.pow(1 - roomba.position[1], 2);
         //penalize distance from center
         contr -= Math.pow(roomba.position[0] - CENTER[0], 2)/Math.pow(CENTER[0], 2);
         //flip sign of reward every so often
@@ -526,11 +526,17 @@ var IARCSim = (function() {
 
     function drawEntity(ent) {
       //represent the Roomba
-      Crush.drawPoint(ctx, ent.position, ent.r, ent.color);
+      Crush.drawPoint(ctx, [
+        DIMS[0]*ent.position[0] ,
+        DIMS[1]*ent.position[1]
+      ], DIMS[0]*ent.r, ent.color);
       //velocity
-      Crush.drawLine(ctx, ent.position, [
-        ent.position[0] + 2*ent.r*ent.direc[0],
-        ent.position[1] + 2*ent.r*ent.direc[1]
+      Crush.drawLine(ctx, [
+        DIMS[0]*ent.position[0] ,
+        DIMS[1]*ent.position[1]
+      ], [
+        DIMS[0]*ent.position[0] + 2*DIMS[0]*ent.r*ent.direc[0],
+        DIMS[1]*ent.position[1] + 2*DIMS[1]*ent.r*ent.direc[1]
       ], ent.color, 2);
     }
 
@@ -540,7 +546,8 @@ var IARCSim = (function() {
     }
 
     return {
-      init: initIARCSim
+      init: initIARCSim,
+      roomsbas: roombas
     };
 })();
 
