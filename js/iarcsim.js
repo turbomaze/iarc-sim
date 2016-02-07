@@ -3,7 +3,7 @@
 | @author Anthony  |
 | @version 1.0     |
 | @date 2015/10/24 |
-| @edit 2015/10/29 |
+| @edit 2015/02/07 |
 \******************/
 
 var IARCSim = (function() {
@@ -16,16 +16,17 @@ var IARCSim = (function() {
     var NUM_GRID_LINES = [20, 20]; //how many grid lines to draw in each dir
     var SPEEDUP = 2.3;
     var MAX_TIME = 10*60*1000; //in ms
+    var VIEW_RADIUS = 5/20; //in math coords 
 
     var UAV_SPEC = {
-      R: 0.0255*DIMS[0], //arbitrary size of the uav
-      S: 0.15*DIMS[0]*SPEEDUP //arbitrary speed of the uav
+      R: 0.0255, //arbitrary size of the uav
+      S: 0.15*SPEEDUP //arbitrary speed of the uav
     };
     var ROOMBA_SPEC = {
       N: 10, //number of roombas
-      R: 0.0085*DIMS[0], //radius of the Roombas
-      S: 0.0165*DIMS[0]*SPEEDUP, //speed in px per second
-      initD: 0.05*500, //how far the roombas are initially
+      R: 0.0085, //radius of the Roombas
+      S: 0.0165*SPEEDUP, //speed in px per second
+      initD: 0.05, //how far the roombas are initially
       angSpd: 1.38*SPEEDUP, //angular speed in radians per second
       flipFreq: 20*1000/SPEEDUP, //rotates 180 degrees every 20s
       randAngFreq: 5*1000/SPEEDUP, //rotates randomly every 5s
@@ -36,7 +37,7 @@ var IARCSim = (function() {
       N: 4, //number of obstacle roombas
       R: 1.5*ROOMBA_SPEC.R, //radius of the obstacle roombas
       S: ROOMBA_SPEC.S, //speed of the obstacle roombas
-      initD: 0.25*DIMS[0],
+      initD: 0.25,
       angSpd: 1.38*SPEEDUP //angular speed in radians per second
     };
     var POINTS_SPEC = {
@@ -50,14 +51,14 @@ var IARCSim = (function() {
      * working vars */
     var canvas, ctx;
     var uav, roombas, obstacles;
-    var points, gameOver;
+    var points, cumRwd, gameOver;
     var globalTime;
     var lastRenderTime;
     var keys;
 
     /*************
      * constants */
-    var CENTER = [DIMS[0]/2, DIMS[1]/2];
+    var CENTER = [0.5, 0.5];
 
     /***********
      * objects */
@@ -224,6 +225,15 @@ var IARCSim = (function() {
       canvas.width = DIMS[0];
       canvas.height = DIMS[1];
       ctx = canvas.getContext('2d');
+      Crush.registerDynamicCanvas(canvas, function(dims) {
+        dims = [
+          Math.min(dims[0], 600),
+          Math.min(dims[0], 600)
+        ];
+        canvas.width = dims[0];
+        canvas.height = dims[0];
+        DIMS = [dims[0], dims[0]];
+      });
 
       //init starting conditions
       initGameState();
@@ -231,9 +241,12 @@ var IARCSim = (function() {
       //controls
       keys = [];
       window.addEventListener('keydown', function(e) {
-        if (e.keyCode === 32) return;
+        if (e.keyCode === 32) {
+          e.preventDefault();
+          return false;
+        } 
         keys[e.keyCode] = true;
-      });
+      }, false);
       window.addEventListener('keyup', function(e) {
         keys[e.keyCode] = false;
         if (e.keyCode === 32) keys[e.keyCode] = true; //reversed
@@ -298,6 +311,9 @@ var IARCSim = (function() {
 
       //misc
       points = POINTS_SPEC.initScore; //arbitrary initial score
+      cumRwd = 0;
+      $s('#rwd').innerHTML = '0';
+      $s('#cum-rwd').innerHTML = '0';
       gameOver = false;
       $s('#play-again-btn-cont').style.display = 'none'; //hide it
     }
@@ -343,8 +359,8 @@ var IARCSim = (function() {
     function handleExitBehavior() {
       for (var ai = 0; ai < roombas.length; ai++) {
         //if a roomba leaves any of the edges, remove the roomba
-        if (roombas[ai].position[0] < 0 || roombas[ai].position[0] > DIMS[0] ||
-            roombas[ai].position[1] < 0 || roombas[ai].position[1] > DIMS[1]) {
+        if (roombas[ai].position[0] < 0 || roombas[ai].position[0] > 1 ||
+            roombas[ai].position[1] < 0 || roombas[ai].position[1] > 1) {
           //special goal edge
           if (roombas[ai].position[1] < 0) {
             //make sure you negate the previous miss deduction!
@@ -392,6 +408,23 @@ var IARCSim = (function() {
       $s('#play-again-btn-cont').style.display = 'block';
     }
 
+    function getReward() {
+      return roombas.reduce(function(total, roomba) {
+        //reward proximity to goal line
+        var contr = Math.pow(1 - roomba.position[1], 2);
+        //penalize distance from center
+        contr -= Math.pow(roomba.position[0] - CENTER[0], 2)/Math.pow(CENTER[0], 2);
+        //flip sign of reward every so often
+        var k = Math.cos(Math.atan2(
+          roomba.position[1] - CENTER[1],
+          roomba.position[0] - CENTER[0]
+        ));
+        contr += k*Math.pow(-1, Math.floor(globalTime/(10*1000))%2);
+
+        return total + contr;
+      }, 0);
+    }
+
     function render() {
       if (gameOver) return;
 
@@ -402,17 +435,31 @@ var IARCSim = (function() {
       globalTime += dt*SPEEDUP;
       $s('#t').innerHTML = fmtTime(globalTime);
 
+      //deal with reward
+      var rwd = getReward();
+      cumRwd += rwd;
+      $s('#rwd').innerHTML = Math.round(100*rwd)/100;
+      $s('#cum-rwd').innerHTML = Math.round(100*cumRwd)/100;
+
       //draw the board
       drawBoard();
 
       //draw the roomba positions
-      roombas.map(drawEntity);
+      roombas.filter(function(roomba) {
+        return roomba.distTo(uav) < VIEW_RADIUS;
+      }).map(drawEntity);
 
       //draw the obstacles
       obstacles.map(drawEntity);
 
       //render the UAV
       drawEntity(uav);
+
+      //draw the spotlight
+      Crush.drawPoint(ctx, [
+        DIMS[0]*uav.position[0],
+        DIMS[1]*uav.position[1]
+      ], DIMS[0]*VIEW_RADIUS, 'rgba(255,255,0,0.1)');
 
       //roomba-roomba collisions
       handleRoombaRoombaCollisions();
@@ -500,11 +547,17 @@ var IARCSim = (function() {
 
     function drawEntity(ent) {
       //represent the Roomba
-      Crush.drawPoint(ctx, ent.position, ent.r, ent.color);
+      Crush.drawPoint(ctx, [
+        DIMS[0]*ent.position[0],
+        DIMS[1]*ent.position[1]
+      ], DIMS[0]*ent.r, ent.color);
       //velocity
-      Crush.drawLine(ctx, ent.position, [
-        ent.position[0] + 2*ent.r*ent.direc[0],
-        ent.position[1] + 2*ent.r*ent.direc[1]
+      Crush.drawLine(ctx, [
+        DIMS[0]*ent.position[0],
+        DIMS[1]*ent.position[1]
+      ], [
+        DIMS[0]*ent.position[0] + 2*DIMS[0]*ent.r*ent.direc[0],
+        DIMS[1]*ent.position[1] + 2*DIMS[1]*ent.r*ent.direc[1]
       ], ent.color, 2);
     }
 
@@ -514,7 +567,8 @@ var IARCSim = (function() {
     }
 
     return {
-      init: initIARCSim
+      init: initIARCSim,
+      roomsbas: roombas
     };
 })();
 
