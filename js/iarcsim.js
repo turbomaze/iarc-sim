@@ -224,6 +224,15 @@ var IARCSim = (function() {
       canvas.width = DIMS[0];
       canvas.height = DIMS[1];
       ctx = canvas.getContext('2d');
+      Crush.registerDynamicCanvas(canvas, function(dims) {
+        dims = [
+          Math.min(dims[0], 600),
+          Math.min(dims[0], 600)
+        ];
+        canvas.width = dims[0];
+        canvas.height = dims[0];
+        DIMS = [dims[0], dims[0]];
+      });
 
       //init starting conditions
       initGameState();
@@ -231,9 +240,12 @@ var IARCSim = (function() {
       //controls
       keys = [];
       window.addEventListener('keydown', function(e) {
-        if (e.keyCode === 32) return;
+        if (e.keyCode === 32) {
+          e.preventDefault();
+          return false;
+        } 
         keys[e.keyCode] = true;
-      });
+      }, false);
       window.addEventListener('keyup', function(e) {
         keys[e.keyCode] = false;
         if (e.keyCode === 32) keys[e.keyCode] = true; //reversed
@@ -527,12 +539,12 @@ var IARCSim = (function() {
     function drawEntity(ent) {
       //represent the Roomba
       Crush.drawPoint(ctx, [
-        DIMS[0]*ent.position[0] ,
+        DIMS[0]*ent.position[0],
         DIMS[1]*ent.position[1]
       ], DIMS[0]*ent.r, ent.color);
       //velocity
       Crush.drawLine(ctx, [
-        DIMS[0]*ent.position[0] ,
+        DIMS[0]*ent.position[0],
         DIMS[1]*ent.position[1]
       ], [
         DIMS[0]*ent.position[0] + 2*DIMS[0]*ent.r*ent.direc[0],
