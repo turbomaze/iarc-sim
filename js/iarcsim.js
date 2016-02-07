@@ -3,7 +3,7 @@
 | @author Anthony  |
 | @version 1.0     |
 | @date 2015/10/24 |
-| @edit 2015/11/29 |
+| @edit 2015/02/07 |
 \******************/
 
 var IARCSim = (function() {
@@ -16,6 +16,7 @@ var IARCSim = (function() {
     var NUM_GRID_LINES = [20, 20]; //how many grid lines to draw in each dir
     var SPEEDUP = 2.3;
     var MAX_TIME = 10*60*1000; //in ms
+    var VIEW_RADIUS = 5/20; //in math coords 
 
     var UAV_SPEC = {
       R: 0.0255, //arbitrary size of the uav
@@ -444,13 +445,21 @@ var IARCSim = (function() {
       drawBoard();
 
       //draw the roomba positions
-      roombas.map(drawEntity);
+      roombas.filter(function(roomba) {
+        return roomba.distTo(uav) < VIEW_RADIUS;
+      }).map(drawEntity);
 
       //draw the obstacles
       obstacles.map(drawEntity);
 
       //render the UAV
       drawEntity(uav);
+
+      //draw the spotlight
+      Crush.drawPoint(ctx, [
+        DIMS[0]*uav.position[0],
+        DIMS[1]*uav.position[1]
+      ], DIMS[0]*VIEW_RADIUS, 'rgba(255,255,0,0.1)');
 
       //roomba-roomba collisions
       handleRoombaRoombaCollisions();
