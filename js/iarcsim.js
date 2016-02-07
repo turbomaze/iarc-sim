@@ -205,7 +205,7 @@ var IARCSim = (function() {
         this.position[1] - roomba.position[1]
       ]);
       var dist = roomba.distTo(this);
-      var oMag = (this.r + roomba.r - dist) + 2;
+      var oMag = (this.r + roomba.r - dist) + 4/DIMS[0];
       roomba.position = [
         roomba.position[0] - oMag*oHat[0],
         roomba.position[1] - oMag*oHat[1]
@@ -446,7 +446,8 @@ var IARCSim = (function() {
 
       //draw the roomba positions
       roombas.filter(function(roomba) {
-        return roomba.distTo(uav) < VIEW_RADIUS;
+        var renderRoomba = roomba.distTo(uav) < VIEW_RADIUS;
+        return renderRoomba;
       }).map(drawEntity);
 
       //draw the obstacles
