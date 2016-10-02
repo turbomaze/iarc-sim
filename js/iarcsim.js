@@ -17,6 +17,7 @@ var IARCSim = (function() {
     var SPEEDUP = 2.3;
     var MAX_TIME = 10*60*1000; //in ms
     var VIEW_RADIUS = 5/20; //in math coords 
+    var CONTROLLED = false; //controlled or programmed?
 
     var UAV_SPEC = {
       R: 0.0255, //arbitrary size of the uav
@@ -55,6 +56,7 @@ var IARCSim = (function() {
     var globalTime;
     var lastRenderTime;
     var keys;
+    var queuedMovements;
 
     /*************
      * constants */
@@ -72,12 +74,28 @@ var IARCSim = (function() {
     UAV.prototype.move = function(dt) {
       //get the direction from the pressed keys
       var dir = [0, 0];
-      if (keys[65]) dir = [dir[0]-1, dir[1]];
-      if (keys[68]) dir = [dir[0]+1, dir[1]];
-      if (keys[87]) dir = [dir[0], dir[1]-1];
-      if (keys[83]) dir = [dir[0], dir[1]+1];
-      dir = norm(dir);
-      if (dir[0] === 0 && dir[1] === 0) return;
+      if (CONTROLLED) {
+        if (keys[65]) dir = [dir[0]-1, dir[1]];
+        if (keys[68]) dir = [dir[0]+1, dir[1]];
+        if (keys[87]) dir = [dir[0], dir[1]-1];
+        if (keys[83]) dir = [dir[0], dir[1]+1];
+        dir = norm(dir);
+        if (dir[0] === 0 && dir[1] === 0) return;
+      } else {
+        // dir
+        var dirs = [
+          [0, 0],
+          [dir[0]-1, dir[1]],
+          [dir[0]+1, dir[1]],
+          [dir[0], dir[1]-1],
+          [dir[0], dir[1]+1]
+        ];
+        if (queuedMovements.length > 0) {
+          var queuedDir = queuedMovements.shift();
+          dir = dirs[queuedDir];
+        }
+        if (dir[0] === 0 && dir[1] === 0) return;
+      }
 
       //nonzero direction/ all good.
       var ds = this.s * dt/1000;
@@ -312,6 +330,7 @@ var IARCSim = (function() {
       //misc
       points = POINTS_SPEC.initScore; //arbitrary initial score
       cumRwd = 0;
+      queuedMovements = [];
       $s('#rwd').innerHTML = '0';
       $s('#cum-rwd').innerHTML = '0';
       gameOver = false;
@@ -428,6 +447,9 @@ var IARCSim = (function() {
     function render() {
       if (gameOver) return;
 
+      //act
+      controlUav();
+
       //deal with time
       var t = +new Date();
       var dt = t - lastRenderTime;
@@ -501,6 +523,36 @@ var IARCSim = (function() {
       }
 
       requestAnimationFrame(render);
+    }
+
+    function controlUav() {
+      var idx = Math.floor(globalTime/1000) % roombas.length;
+      goTowardsRoomba(idx);
+      if (roombas[idx].distTo(uav)) {
+        tapRoomba(); 
+      }
+      // goTowardsPosition([0.5, 0.7]);
+    }
+
+    function tapRoomba() {
+      keys[32] = true;
+    }
+
+    function goTowardsRoomba(i) {
+      var rLoc = roombas[i].position;
+      goTowardsPosition(rLoc);
+    }
+
+    function goTowardsPosition(rLoc) {
+      var uLoc = uav.position;
+      var diff = [uLoc[0] - rLoc[0], uLoc[1] - rLoc[1]];
+      if (Math.max(Math.abs(diff[0]), Math.abs(diff[1])) > 0.005) {
+        if (Math.abs(diff[0]) > Math.abs(diff[1])) {
+          queuedMovements.push(diff[0] > 0 ? 1 : 2);
+        } else {
+          queuedMovements.push(diff[1] > 0 ? 3 : 4);
+        }
+      }
     }
 
     /********************
