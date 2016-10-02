@@ -448,7 +448,9 @@ var IARCSim = (function() {
       if (gameOver) return;
 
       //act
-      controlUav();
+      if (!CONTROLLED) {
+        controlUav();
+      }
 
       //deal with time
       var t = +new Date();
