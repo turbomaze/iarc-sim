@@ -17,7 +17,7 @@ var IARCSim = (function () {
   var SPEEDUP = 2.3
   var MAX_TIME = 10 * 60 * 1000 // in ms
   var VIEW_RADIUS = 5 / 20 // in math coords
-  var CONTROLLED = false // controlled or programmed?
+  var CONTROLLED = true // controlled or programmed?
 
   var UAV_SPEC = {
     R: 0.0255, // arbitrary size of the uav
@@ -57,11 +57,10 @@ var IARCSim = (function () {
   var lastRenderTime
   var keys
   var queuedMovements
-  if (!requestAnimationFrame) {
-    var requestAnimationFrame = function (f) {
-      setTimeout(f, 1000 / 60)
-    }
-  }
+
+  var piProb
+  var piLoc
+  var positionsLastSavedAt
 
   /*************
    * constants */
@@ -89,11 +88,11 @@ var IARCSim = (function () {
     } else {
       // dir
       var dirs = [
-          [0, 0],
-          [dir[0] - 1, dir[1]],
-          [dir[0] + 1, dir[1]],
-          [dir[0], dir[1] - 1],
-          [dir[0], dir[1] + 1]
+        [0, 0],
+        [dir[0] - 1, dir[1]],
+        [dir[0] + 1, dir[1]],
+        [dir[0], dir[1] - 1],
+        [dir[0], dir[1] + 1]
       ]
       if (queuedMovements.length > 0) {
         var queuedDir = queuedMovements.shift()
@@ -109,7 +108,8 @@ var IARCSim = (function () {
     this.position[1] += ds * this.direc[1]
   }
 
-  function Roomba (pos, color) {
+  function Roomba (id, pos, color) {
+    this.id = id
     this.position = pos.slice(0)
     this.color = color
     this.direc = norm([
@@ -261,6 +261,9 @@ var IARCSim = (function () {
     // init starting conditions
     initGameState()
 
+    // initialize the empty probability store
+    piProb = {}
+
     // controls
     keys = []
     window.addEventListener('keydown', function (e) {
@@ -284,6 +287,10 @@ var IARCSim = (function () {
   }
 
   function initGameState () {
+    // probability variables
+    piLoc = {}
+    positionsLastSavedAt = -Infinity
+
     // uav initialization
     uav = new UAV(
       CENTER,
@@ -302,6 +309,7 @@ var IARCSim = (function () {
       var y = ROOMBA_SPEC.initD * Math.sin(theta)
       roombas.push(
           new Roomba(
+            roombas.length,
             [CENTER[0] + x, CENTER[1] + y],
             Crush.getColorStr([
               Math.floor(140 * Math.random()),
@@ -386,13 +394,26 @@ var IARCSim = (function () {
       if (
         roombas[ai].position[0] < 0 || roombas[ai].position[0] > 1 ||
         roombas[ai].position[1] < 0 || roombas[ai].position[1] > 1
-        ) {
+      ) {
+        var n = 1 // seconds ago
+        var tpast = Math.floor(globalTime / 1000) - n
+        var pos = piLoc[tpast][roombas[ai].id]
+        var x = Math.floor(19 * pos[0])
+        var y = Math.floor(19 * pos[1])
+        var id = getIdentifierFromState(x, y, n)
+        if (!(id in piProb)) {
+          piProb[id] = 0.2
+        }
+        console.log(id, 'r', roombas[ai].id, pos, piProb[id])
+
         // special goal edge
         if (roombas[ai].position[1] < 0) {
           // make sure you negate the previous miss deduction!
           points += POINTS_SPEC.goal
+          piProb[id] *= 1.3
         } else {
           points += POINTS_SPEC.miss
+          piProb[id] /= 1.3
         }
 
         // remove it
@@ -453,6 +474,18 @@ var IARCSim = (function () {
 
   function render () {
     if (gameOver) return
+
+    // save the positions
+    if (globalTime - positionsLastSavedAt > 1000) {
+      // save the positions
+      var time = Math.floor(globalTime / 1000)
+      var positions = {}
+      roombas.forEach(function(roomba) {
+        positions[roomba.id] = roomba.position.slice(0)
+      })
+      piLoc[time] = positions
+      positionsLastSavedAt = globalTime
+    }
 
     // act
     if (!CONTROLLED) {
@@ -617,6 +650,49 @@ var IARCSim = (function () {
     // draw the goal
     ctx.fillStyle = '#72DE2A'
     ctx.fillRect(0, 0, DIMS[0], 2 * thk)
+
+    // overlay the probability of roombas leaving various spots
+    var n = 1 // one second
+    for (ai = 0; ai < NUM_GRID_LINES[0]; ai++) {
+      for (var bi = 0; bi < NUM_GRID_LINES[1]; bi++) {
+        ctx.fillStyle = getColorFromProbability(
+          getProbability(ai, bi, n)      
+        )
+        ctx.fillRect(
+          ai * xInc + 1,
+          bi * yInc + 1,
+          xInc - 2,
+          yInc - 2
+        )
+      }
+    }
+  }
+
+  function getColorFromProbability(p) {
+    var shiftedP = p / 2
+    return 'rgba(255, 0, 0, ' + shiftedP + ')'
+  }
+
+  function getProbability(x, y, t) {
+    function getRandomP(x, y) {
+      var a = 0.07
+      var b = 0.05
+      var r = Math.pow(x - 9, 2) + Math.pow(y - 9, 2) + (-15 + 30 * Math.random())
+      var gaussian = a*Math.exp(b * r)
+      return 1 / (1 + Math.exp(-gaussian))
+    }
+
+    var id = getIdentifierFromState(x, y, t)
+    if (id in piProb) {
+      return piProb[id]
+    } else {
+      piProb[id] = 0.1
+      return piProb[id]
+    }
+  }
+
+  function getIdentifierFromState(x, y, t) {
+    return x + '-' + y + '-' + t
   }
 
   function drawEntity (ent) {
